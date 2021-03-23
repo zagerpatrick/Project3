@@ -1,24 +1,37 @@
 # Imports
 import numpy as np
-import torch
 
 
-def act_logistic(x):
+def act(x, d):
     '''
-    Returns result of the logistic function.
-    '''
-
-    s = 1 / (1 + np.exp(-x))
-
-    return s
-
-
-def act_logistic_prime(x):
-    '''
-    Returns result of the derivative of the logistic function.
+    Returns network activation functions.
     '''
 
-    a = act_logistic(x)*(1-act_logistic(x))
+    act_f = {
+        'logistic': lambda x: 1 / (1 + np.exp(-x)),
+        'relu': lambda x: np.greater(x, 0)*x,
+        'arctan': lambda x: np.arctan(x),
+        'tanh': lambda x: np.tanh(x),
+        'softplus': lambda x: x * (x >= 0) + np.log1p(np.exp(-np.abs(x)))}
+
+    a = act_f[d](x)
+
+    return a
+
+
+def act_prime(x, d):
+    '''
+    Returns the derivatives of the network activation functions. 
+    '''
+
+    act_f_prime = {
+        'logistic': lambda x: (1 / (1 + np.exp(-x)))*(1-(1 / (1 + np.exp(-x)))),
+        'relu': lambda x: np.greater(x, 0).astype(int),
+        'arctan': lambda x: 1/((x**2) + 1),
+        'tanh': lambda x: 1 - (np.tanh(x)**2),
+        'softplus': lambda x: np.exp(x) / (np.exp(x) + 1)}
+
+    a = act_f_prime[d](x)
 
     return a
 
@@ -56,6 +69,8 @@ class NeuralNetwork():
     ----------
     dimensions : list
         List of dimensions of neural network to be constructed.
+    break_lim = float
+        loss limit to stop model training.
     train_array : np.array
         Training data.
     train_labels : np.array
@@ -70,6 +85,8 @@ class NeuralNetwork():
         Neural network weights.
     biases : list of np.arrays
         Neural network biases.
+    self.act_type : string
+        Network activation type.
     activations : list of np.arrays
         Neural network outputs of activation functions.
     z_inputs : list of np.arrays
@@ -92,8 +109,10 @@ class NeuralNetwork():
     ...
     '''
 
-    def __init__(self, dimensions):
+    def __init__(self, dimensions, act_type, break_lim = 0.0001):
         self.dimensions = dimensions
+        self.act_type = act_type
+        self.break_lim = break_lim
         self.train_array = np.array([])
         self.train_labels = np.array([])
         self.n_epochs = int()
@@ -144,7 +163,7 @@ class NeuralNetwork():
 
         for i in range(self.nlayers - 1):
             z = (self.weights[i] @ a) + self.biases[i]
-            a = act_logistic(z)
+            a = act(z, self.act_type)
             self.z_inputs.append(z)
             self.activations.append(a)
         
@@ -170,11 +189,11 @@ class NeuralNetwork():
                 w = self.weights[i]
                 z = self.z_inputs[i]
                 a = self.activations[i]
-                loss = np.multiply(loss_ss_prime(yhat, self.train_labels), act_logistic_prime(z))
+                loss = np.multiply(loss_ss_prime(yhat, self.train_labels), act_prime(z, self.act_type))
             else:
                 z = self.z_inputs[i]
                 a = self.activations[i]
-                loss = np.multiply(np.transpose(w) @ loss, act_logistic_prime(z))
+                loss = np.multiply(np.transpose(w) @ loss, act_prime(z, self.act_type))
                 w = self.weights[i]
 
             self.grad_biases.insert(0, loss @ np.ones((Nbatch, 1)))
@@ -232,8 +251,10 @@ class NeuralNetwork():
             self._forward_prop(train_array, train_labels)
             self._backward_prop()
             self._update(learning_rate)
+            if self.loss_list[-1] <= self.break_lim:
+                break
 
-    def predict(self, test_array, test_labels):
+    def predict(self, test_array):
         '''
         Given an input layer of testing data, the trained model is forwared 
         propagated. Weighted sums and the activations are calculated
@@ -253,12 +274,12 @@ class NeuralNetwork():
         '''
 
         a = test_array
-        self.test_array, self.test_labels = test_array, test_labels
+        self.test_array = test_array
         self.activations, self.z_inputs = [a], []
 
         for i in range(self.nlayers - 1):
             z = (self.weights[i] @ a) + self.biases[i]
-            a = act_logistic(z)
+            a = act(z, self.act_type)
             self.z_inputs.append(z)
             self.activations.append(a)
         
